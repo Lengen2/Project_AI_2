@@ -76,38 +76,132 @@ X_train = training_data[:, :2]  # Features (x, y coordinates)
 y_train = training_data[:, 2]   # # Class labels (+1 or -1)
 # (Same as before, the first ":" means select all rows, the second "2" means selecting a single coloumn at index "2" Becuase the index starts at 0, this grabs the third coloumn aka the label coloumn)
 
+# Load testing dataset (I have mine named testing.txt, it should contain colums: x1, x2, label)
+testing_data = np.loadtxt('testing.txt')
+X_test = testing_data[:, :2]  # Features (x, y coordinates) # Feautures (x, y coordinates)
+y_test = testing_data[:, 2]   # Class labels (+1 or -1) # Class labels (+1 or -1)
 
+# Convert training inputs into CVXOPT matrix format for compatibility with the solver
+Xs_cvs = cvx.matrix(X_train, tc = 'd') # Takes the 2D training feature array and converts it into a CVXOPT matrix of type 'd' (double precision)
+Ts_cvs = cvx.matrix(y_train.reshape(-1, 1), tc = 'd')  # Reshapes 1D class labels array into a 2D column vector and converts it into a CVXOPT matrix of type 'd'
 
-def plotContours(Xs,Ts,Ls,b,K,minRange=-0.6,maxRange=1.6,step=0.05,
-                 filled=False,
-                 boundcol="#208020", posmarcol="red", negmarcol="blue",
-                 fillposcol="#ffe0e0", fillnegcol="#e0f0ff"):
-    """Plot contours of activation function for a 2-d classifier, e.g. 2-input XOR.
-       Xs - cvxopt Nx2 matrix, data points, one [x,y] pair per row.
-       Ts - cvxopt Nx1 matrix, class labels as a cvxopt column vector.
-       Ls - cvxopt Nx1 matrix, Lagrange multipliers as a cvxopt column vector.
-       b  - bias, scalar
-       K  - Kernel function taking 2 scalar arguments, x & y co-ordinates.
-       minRange, maxRange - range of x,y to be plotted.
-       step - delta used to sample SVM activations across the range.
+print (f"Dataset loaded successfully.  Training samples: {len(X_train)}, Testing samples: {len(X_test)}")
+
+# ============================================================================
+# 3. SVM TRAINING FUNCTION (CVXOPT QP SOLVER)
+# ============================================================================
+def train_svm(Xs, Ts, C):
+    """Solves the soft-margin SVM dual optimization problem using CVXOPT's QP solver.
+    
+    Objective:
+    min_alpha (1/2 * aplha^T P alpha + q^T alpha)
+    subject to: 
+    0 <= alpha_i <= C for all i ( box constraints)
+    sum (alpha_i * y_i) = 0 (equality constraint)
     """
+    N = Xs.shape[0]  # Number of training samples  
 
-    # Build activation level array.
-    xs = np.arange(minRange,maxRange+step/2.0,step)
-    ys = np.arange(minRange,maxRange+step/2.0,step)
-    als = np.array([activation(cvx.matrix([y,x]).T,Xs,Ts,Ls,b,K) 
-                    for y in ys for x in xs])
-    als = als.reshape((len(xs),len(ys)))
-    if filled:
-        plt.contourf(xs,ys,als.T,levels=(-1e6,0.0,1e6),\
-                     colors=(fillnegcol, fillposcol))
-    plt.contour(xs,ys,als.T,levels=(-1.0,0.0,1.0),\
-                linewidths=(1,3,1),
-                colors=(negmarcol,boundcol,posmarcol))
-    pts, labs = np.array(Xs).T, np.array(Ts).ravel()
-#    print(pts.shape, labs.shape)
-    plt.scatter(pts[0], pts[1], c=labs, cmap='bwr')
-    plt.grid()
-#    plt.axis('equal');
-    return xs, ys, als
+    # Step 1: Compute the kernel matrix K using the RBF kernel
+    K_matrix = rbf_kernel(Xs, Xs)
+
+    # Step 2:Set up quadratic objective matrix P, linear term q, and constraints for the QP solver
+    Y_diag = np.outer(y_train, y_train) # Create a diagonal matrix of class labels (y_i * y_j) for the quadratic term in the dual objective
+    P_np = Y_diag * K_matrix  # Element-wise multiplication to form P
+    P = matrix(P_np, tc = 'd') # Convert to CVXOPT matrix
+
+    # Step 3: Set up inequality constraints for the box constraints 0 <= alpha_i <= C
+    # Gx <= h, where G is a 2N x N matrix and h is a 2N x 1 vector
+    G_std = np.vstack((-np.eye(N), np.eye(N)))  # Stack -I
+    h_np = np.hstack((np.zeros(N), np.ones(N) * C))  # Stack 0 and C
+    G = matrix(G_std, tc = 'd')  # Convert to CVXOPT matrix
+    h = matrix(h_np, tc = 'd')  # Convert to CVXOPT matrix
+
+    # Step 4: Set up equality constraint for the sum of alpha_i * y_i = 0
+    A = matrix(y_train.reshape(1, -1), tc = 'd')  # Reshape y to a row vector and convert to CVXOPT matrix
+    b = matrix(0.0, tc = 'd')  # Scalar bias term for the equality constraint
+
+    # Step 5: Call the CVXOPT QP solver to solve the optimization problem
+    q = matrix(-np.ones((N, 1)), tc='d') # forgot to define q ooppsie daisy 
+    solution = solvers.qp(P, q, G, h, A, b)
+
+    # Extract alpha values from the solver output 
+    alphas = np.array(solution['x']).flatten()
+
+    # Step 6: Support vectors 
+    sv_thresh = 1e-4
+    sv_indices = np.where(alphas > sv_thresh)[0]  # Indices of support vectors
+
+    # Step 7: Calculate the bias term b using the support vectors
+    free_sv_indices = np.where((alphas > sv_thresh) & (alphas < C - sv_thresh))[0]  # Indices of free support vectors
+    if len(free_sv_indices) > 0:
+        idx_b = free_sv_indices[0]  # Use the first free support vector to compute bias
+    else: 
+        idx_b = sv_indices[0]  # If no free support vectors, use the first support vector
+
+    sum_term = np.sum(alphas * y_train * rbf_kernel(Xs, Xs[idx_b])) # Compute the sum term for bias calculation
+    b_val = y_train[idx_b] - sum_term  # Calculate bias
+
+    # Format alpha values and bias for return
+    Ls_filtered = np.where(alphas > sv_thresh, alphas , 0.0) # Changed from np.sum cause that shit dont work
+    Ls_cvs = matrix (Ls_filtered.reshape(-1, 1), tc = 'd')  # Convert to CVXOPT matrix
+
+    return alphas, b_val, Ls_cvs, sv_indices 
+
+# ============================================================================
+# 4. EVALUATION FUNCTION
+# ===========================================================================
+
+def evaluate_model(X_eval, y_eval, Ls, b_val, X_train_ref, y_train_ref):
+    """Evaluates the trained SVM model on a given dataset.
+    
+    Arguments:
+        X_eval: Input features for evaluation (numpy array).
+        y_eval: True class labels for evaluation (numpy array).
+        Ls: Multipliers from the trained SVM model.
+        b_val: Bias term from the trained SVM model.
+        X_train_ref: Training features for kernel computation.
+        y_train_ref: Training labels for kernel computation.
+    """
+# Ensure Lagrange multipliers (Ls) are a flat NumPy array
+    if isinstance(Ls, cvx.matrix):
+        alphas_ref = np.array(Ls).flatten()
+    else:
+        alphas_ref = np.array(Ls).flatten()
+        
+    # Compute the RBF kernel matrix between the evaluation set and training reference set
+    # K_eval shape: (n_eval_samples, n_train_samples)
+    K_eval = rbf_kernel(X_eval, X_train_ref)
+    
+    # Vectorized activation calculation for all evaluation samples simultaneously:
+    # f(x) = b + sum(alpha_i * y_i * K(x_i, x))
+    weights = alphas_ref * y_train_ref
+    activations = b_val + np.dot(K_eval, weights)
+    
+    # Classify based on the sign of the activation (+1 or -1)
+    preds = np.where(activations >= 0, 1.0, -1.0)
+    
+    # Calculate overall classification accuracy percentage
+    accuracy = np.mean(preds == y_eval) * 100.0
+    
+    # Calculate Error Metrics:
+    # False Positive (FP): True class is -1, but model predicted +1
+    fp = np.sum((y_eval == -1) & (preds == 1.0))
+    
+    # False Negative (FN): True class is +1, but model predicted -1
+    fn = np.sum((y_eval == 1) & (preds == -1.0))
+    
+    # Return all three metrics expected by the main execution loop
+    return accuracy, fp, fn
+
+# ============================================================================
+# 5. MAIN EXECUTION LOOP FOR C = 1 AND C = 1,000,000
+# ============================================================================
+
+C_values = [1, 1_000_000]  # Regularization parameters to evaluate
+for C in C_values:
+    print(f"\n===============================================")
+    print(f"Training SVM with C = {C}")
+    print(f"===============================================")
+
+
 
