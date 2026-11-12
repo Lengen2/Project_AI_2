@@ -1,20 +1,80 @@
-##
-## plotContours.py
-##
-##
-## Simplified data and contour plotting routine specialised to work with CVXOPT Intro.ipynb
-## notebook.
-##
-##
+"""
+=============================================================================
+TEAM ASSIGNMENT: Soft-Margin Kernel-Based SVM Classifier (CVXOPT Implementation)
+=============================================================================
+Team Members:
+  - Conor Knight [23383542]
+  - Oisin Dillon O' Rourke [23372109]
+  - Adam Lengen Kelly [23360879]
+
+Description:
+  This program implements a soft-margin Support Vector Machine (SVM) classifier 
+  using a Radial Basis Function (RBF) kernel. It solves the dual optimization 
+  problem using the strict standard QP form required by the CVXOPT library.
+  It trains and evaluates models for C = 1 and C = 1,000,000 using provided 
+  training and testing dataset files.
+=============================================================================
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 import cvxopt as cvx
 import scipy.spatial
+import cvxopt 
+import matrix, solvers
 
+#import custom plotting utility provided with the project
+from plotCounters import plotContours, activation
 
-def activation(testXvec, allXvecs, Ts, Ls, b, K):
-    ks = K(allXvecs,testXvec)
-    return b + sum(cvx.mul(cvx.mul(Ls,Ts),ks))
+# Suppress CVXOPT solver iteration printouts to keep the console output clean
+solvers.options['show_progress'] = False
+
+# =============================================================================
+# 1. KERNEL CONFIGURATION
+# =============================================================================
+# Kernel variance parameter specified in the assignment: sigma^2 = 0.25
+SIGMA_SQUARED = 0.25
+GAMMA = 1.0 / (2.0 * SIGMA_SQUARED)
+
+def rbf_kernel(X1, X2):
+    """Compute the RBF kernel matrix between two sets of input vectors.
+    
+    Args:
+        X1: cvxopt matrix of shape (N1, D) where N1 is the number of samples and D is the dimensionality.
+        X2: cvxopt matrix of shape (N2, D) where N2 is the number of samples and D is the dimensionality.
+    
+    Returns:
+        K: cvxopt matrix of shape (N1, N2) containing the RBF kernel values.
+    """
+    # Ensure inputs are numpy arrays for distance computation
+    if isinstance(X1, list):
+        X1 = np.array(X1)
+    if isinstance(X2, list):
+        X2 = np.array(X2)
+
+    # Handle single 1D input vectors by reshaping them to 2D    
+    if X1.ndim == 1:
+        X1 = X1.reshape(1, -1)
+    if X2.ndim == 1:
+        X2 = X2.reshape(1, -1)
+
+    # Efficient squared Euclidean distance matrix computation using ||x - z||^2 = ||x||^2 + ||z||^2 - 2xz^T    
+    dists = np.sum(X1**2, axis=1).reshape(-1, 1) + np.sum(X2**2, axis=1) - 2 * np.dot(X1, X2.T)
+    
+    # Apply the RBF kernel transformation (clip negative distances to 0 to avoid numerical issues)
+    return np.exp(-GAMMA * np.maximum(dists, 0))
+
+# ============================================================================
+# 2. Data Loading and Preprocessing
+# ============================================================================
+print("Loading training and testing datasets...")
+
+# Load training dataset(I have mine named training.txt, it should contain colums: x1, x2, label)
+training_data = np.loadtxt('training.txt')
+X_train = training_data[:, :2]  # Features (x, y coordinates)
+#(The first ":" means select all rows, the second ":2" means selectg colums from 0 up to but not including 2, i.e. this grabs the first Coloumn 0 and Coloum 1 aka x & y )
+y_train = training_data[:, 2]   # # Class labels (+1 or -1)
+# (Same as before, the first ":" means select all rows, the second "2" means selecting a single coloumn at index "2" Becuase the index starts at 0, this grabs the third coloumn aka the label coloumn)
+
 
 
 def plotContours(Xs,Ts,Ls,b,K,minRange=-0.6,maxRange=1.6,step=0.05,
