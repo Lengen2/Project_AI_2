@@ -17,12 +17,14 @@ Description:
 """
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.spatial
 import cvxopt as cvx
 from cvxopt import matrix, solvers
-import scipy.spatial
 
-#import custom plotting utility provided with the project
+# Import custom plotting utility provided with the project
 from plotContours import plotContours, activation
+
+solvers.options['show_progress'] = False
 
 # Suppress CVXOPT solver iteration printouts to keep the console output clean
 solvers.options['show_progress'] = False
