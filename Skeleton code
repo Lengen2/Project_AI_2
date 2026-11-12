@@ -18,12 +18,11 @@ Description:
 import numpy as np
 import matplotlib.pyplot as plt
 import cvxopt as cvx
+from cvxopt import matrix, solvers
 import scipy.spatial
-import cvxopt 
-import matrix, solvers
 
 #import custom plotting utility provided with the project
-from plotCounters import plotContours, activation
+from plotContours import plotContours, activation
 
 # Suppress CVXOPT solver iteration printouts to keep the console output clean
 solvers.options['show_progress'] = False
@@ -109,3 +108,4 @@ def plotContours(Xs,Ts,Ls,b,K,minRange=-0.6,maxRange=1.6,step=0.05,
     plt.grid()
 #    plt.axis('equal');
     return xs, ys, als
+
