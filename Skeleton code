@@ -12,7 +12,7 @@ Description:
   using a Radial Basis Function (RBF) kernel. It solves the dual optimization 
   problem using the strict standard QP form required by the CVXOPT library.
   It trains and evaluates models for C = 1 and C = 1,000,000 using provided 
-  training and testing dataset files.
+  Training_set and Testing_set dataset files.
 =============================================================================
 """
 import numpy as np
@@ -47,8 +47,13 @@ def rbf_kernel(X1, X2):
         K: cvxopt matrix of shape (N1, N2) containing the RBF kernel values.
     """
     # Ensure inputs are numpy arrays for distance computation
+    if isinstance(X1, cvx.matrix):
+        X1 = np.array(X1)
     if isinstance(X1, list):
         X1 = np.array(X1)
+
+    if isinstance(X2, cvx.matrix):
+        X2 = np.array(X2)
     if isinstance(X2, list):
         X2 = np.array(X2)
 
@@ -58,7 +63,9 @@ def rbf_kernel(X1, X2):
     if X2.ndim == 1:
         X2 = X2.reshape(1, -1)
 
-    # Efficient squared Euclidean distance matrix computation using ||x - z||^2 = ||x||^2 + ||z||^2 - 2xz^T    
+    # Efficient squared Euclidean distance matrix computation using ||x - z||^2 = ||x||^2 + ||z||^2 - 2xz^T   
+    # The double (*) means its squaring every element in the array, and then summing along axis 1 (rows) 
+    # to get the squared norms of each vector
     dists = np.sum(X1**2, axis=1).reshape(-1, 1) + np.sum(X2**2, axis=1) - 2 * np.dot(X1, X2.T)
     
     # Apply the RBF kernel transformation (clip negative distances to 0 to avoid numerical issues)
@@ -67,28 +74,28 @@ def rbf_kernel(X1, X2):
 # ============================================================================
 # 2. Data Loading and Preprocessing
 # ============================================================================
-print("Loading training and testing datasets...")
+print("Loading Training_set and Testing_set datasets...")
 
-# Load training dataset(I have mine named training.txt, it should contain colums: x1, x2, label)
-training_data = np.loadtxt('training.txt')
-X_train = training_data[:, :2]  # Features (x, y coordinates)
+# Load Training_set dataset(I have mine named Training_set.txt, it should contain colums: x1, x2, label)
+Training_set_data = np.loadtxt('Training_set.txt')
+X_train = Training_set_data[:, :2]  # Features (x, y coordinates)
 #(The first ":" means select all rows, the second ":2" means selectg colums from 0 up to but not including 2, i.e. this grabs the first Coloumn 0 and Coloum 1 aka x & y )
-y_train = training_data[:, 2]   # # Class labels (+1 or -1)
+y_train = Training_set_data[:, 2]   # # Class labels (+1 or -1)
 # (Same as before, the first ":" means select all rows, the second "2" means selecting a single coloumn at index "2" Becuase the index starts at 0, this grabs the third coloumn aka the label coloumn)
 
-# Load testing dataset (I have mine named testing.txt, it should contain colums: x1, x2, label)
-testing_data = np.loadtxt('testing.txt')
-X_test = testing_data[:, :2]  # Features (x, y coordinates) # Feautures (x, y coordinates)
-y_test = testing_data[:, 2]   # Class labels (+1 or -1) # Class labels (+1 or -1)
+# Load Testing_set dataset (I have mine named Testing_set.txt, it should contain colums: x1, x2, label)
+Testing_set_data = np.loadtxt('Testing_set.txt')
+X_test = Testing_set_data[:, :2]  # Features (x, y coordinates) # Feautures (x, y coordinates)
+y_test = Testing_set_data[:, 2]   # Class labels (+1 or -1) # Class labels (+1 or -1)
 
-# Convert training inputs into CVXOPT matrix format for compatibility with the solver
-Xs_cvs = cvx.matrix(X_train, tc = 'd') # Takes the 2D training feature array and converts it into a CVXOPT matrix of type 'd' (double precision)
+# Convert Training_set inputs into CVXOPT matrix format for compatibility with the solver
+Xs_cvs = cvx.matrix(X_train, tc = 'd') # Takes the 2D Training_set feature array and converts it into a CVXOPT matrix of type 'd' (double precision)
 Ts_cvs = cvx.matrix(y_train.reshape(-1, 1), tc = 'd')  # Reshapes 1D class labels array into a 2D column vector and converts it into a CVXOPT matrix of type 'd'
 
-print (f"Dataset loaded successfully.  Training samples: {len(X_train)}, Testing samples: {len(X_test)}")
+print (f"Dataset loaded successfully.  Training_set samples: {len(X_train)}, Testing_set samples: {len(X_test)}")
 
 # ============================================================================
-# 3. SVM TRAINING FUNCTION (CVXOPT QP SOLVER)
+# 3. SVM Training_set FUNCTION (CVXOPT QP SOLVER)
 # ============================================================================
 def train_svm(Xs, Ts, C):
     """Solves the soft-margin SVM dual optimization problem using CVXOPT's QP solver.
@@ -99,7 +106,7 @@ def train_svm(Xs, Ts, C):
     0 <= alpha_i <= C for all i ( box constraints)
     sum (alpha_i * y_i) = 0 (equality constraint)
     """
-    N = Xs.shape[0]  # Number of training samples  
+    N = Xs.shape[0]  # Number of Training_setsamples  
 
     # Step 1: Compute the kernel matrix K using the RBF kernel
     K_matrix = rbf_kernel(Xs, Xs)
@@ -143,9 +150,9 @@ def train_svm(Xs, Ts, C):
 
     # Format alpha values and bias for return
     Ls_filtered = np.where(alphas > sv_thresh, alphas , 0.0) # Changed from np.sum cause that shit dont work
-    Ls_cvs = matrix (Ls_filtered.reshape(-1, 1), tc = 'd')  # Convert to CVXOPT matrix
+    Ls_cvx = matrix (Ls_filtered.reshape(-1, 1), tc = 'd')  # Convert to CVXOPT matrix
 
-    return alphas, b_val, Ls_cvs, sv_indices 
+    return alphas, b_val, Ls_cvx, sv_indices 
 
 # ============================================================================
 # 4. EVALUATION FUNCTION
@@ -159,17 +166,16 @@ def evaluate_model(X_eval, y_eval, Ls, b_val, X_train_ref, y_train_ref):
         y_eval: True class labels for evaluation (numpy array).
         Ls: Multipliers from the trained SVM model.
         b_val: Bias term from the trained SVM model.
-        X_train_ref: Training features for kernel computation.
-        y_train_ref: Training labels for kernel computation.
+        X_train_ref: Training_set features for kernel computation.
+        y_train_ref: Training_set labels for kernel computation.
     """
-# Ensure Lagrange multipliers (Ls) are a flat NumPy array
+    # Ensure Lagrange multipliers (Ls) are a flat NumPy array
     if isinstance(Ls, cvx.matrix):
         alphas_ref = np.array(Ls).flatten()
     else:
         alphas_ref = np.array(Ls).flatten()
         
-    # Compute the RBF kernel matrix between the evaluation set and training reference set
-    # K_eval shape: (n_eval_samples, n_train_samples)
+    # Compute the RBF kernel matrix between the evaluation set and Training_set reference set
     K_eval = rbf_kernel(X_eval, X_train_ref)
     
     # Vectorized activation calculation for all evaluation samples simultaneously:
@@ -200,8 +206,43 @@ def evaluate_model(X_eval, y_eval, Ls, b_val, X_train_ref, y_train_ref):
 C_values = [1, 1_000_000]  # Regularization parameters to evaluate
 for C in C_values:
     print(f"\n===============================================")
-    print(f"Training SVM with C = {C}")
+    print(f"Training_set SVM with C = {C}")
     print(f"===============================================")
 
+    # Train the SVM model using the Training_set dataset
+    alphas, b_val, Ls_cvx, sv_indices = train_svm(X_train, y_train, C)
 
+    print(f"-> Total Support Vectors: {len(sv_indices)}")
+    print(f"-> Bias term (b): {b_val:.4f}")
 
+    # Perform evaluation on the Training_set dataset
+    train_accuracy, train_fp, train_fn = evaluate_model(X_train, y_train, Ls_cvx, b_val, X_train, y_train)
+    print(f"Training_set Accuracy: {train_accuracy:.2f}% ")
+    print(f"Training_set False Positives: {train_fp}, False Negatives: {train_fn}")
+
+    # Perform evaluation on the Testing_set dataset
+    test_accuracy, test_fp, test_fn = evaluate_model(X_test, y_test, Ls_cvx, b_val, X_train, y_train)
+    print(f"Testing_set Accuracy: {test_accuracy:.2f}% ")
+    print(f"Testing_set False Positives: {test_fp}, False Negatives: {test_fn}")
+
+    # =============================================================================
+    # 6. PLOTTING DECISION BOUNDARIES AND SUPPORT VECTORS
+    # =============================================================================
+
+    print(f"\nPlotting decision boundaries and support vectors for C = {C}...")
+    plt.figure(figsize=(8, 6)) # plt is imported from matplotlib.pyplot as plt at the top
+
+    def custom_kernel(all_x_vecs, test_x_vec):
+        return cvx.matrix(rbf_kernel(np.array(all_x_vecs), np.array(test_x_vec).flatten()), tc='d')
+
+    # Plot contours using the provided utility function, which visualizes the decision boundary and margins
+    plotContours(Xs_cvs, Ts_cvs, Ls_cvx, b_val, custom_kernel,
+                 minRange = -6, maxRange = 6.5, step = 0.1, filled = True, 
+                 boundcol = 'green', posmarcol = "red", negmarcol = "blue")
+
+    plt.title(f" RBF Kernel SVM Decision Boundary & Margins (C = {C})")
+    plt.xlabel("Feature 1 (x1)")
+    plt.ylabel("Feature 2 (x2)")
+    plt.show()
+
+print("\nAll classifiers trained, evaluated and plotted successfully")
