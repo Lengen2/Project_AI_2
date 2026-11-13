@@ -240,6 +240,9 @@ for C in C_values:
                  minRange = -6, maxRange = 6.5, step = 0.1, filled = True, 
                  boundcol = 'green', posmarcol = "red", negmarcol = "blue")
 
+    plt.xlim(-5.5, 6.0)
+    plt.ylim(-5.5, 5.5)
+
     plt.title(f" RBF Kernel SVM Decision Boundary & Margins (C = {C})")
     plt.xlabel("Feature 1 (x1)")
     plt.ylabel("Feature 2 (x2)")
