@@ -47,7 +47,8 @@ solvers.options['show_progress'] = False
 # While the Testing_set gives an score of how accuratly the model performs on the 1,000 testing points it hasn't encountered before
 # To run in POWERSHELL all you have to do is first run this code
 # Then type cd then the directory where the project is for example mine is C:\Users\adaml\Documents\GitHub\Project_AI_2
-#
+# Make sure its saved as a py file and not a text file and I have mine name as Skeleton_code 
+# Once you have that done paste this python Skeleton_code.py 1 and just change the number from 1-> 1,000,000
 # At least I think thats what happening tbh tho i'm a bit lost 
 
 # NEW UPDATED VARIABE LEGEND 
